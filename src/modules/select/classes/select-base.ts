@@ -1,12 +1,12 @@
 import {
     ViewChild, HostBinding, ElementRef, HostListener, Input, ContentChildren, QueryList,
-    AfterContentInit, TemplateRef, ViewContainerRef, ContentChild, EventEmitter, Output, OnDestroy, Renderer2
+    AfterContentInit, TemplateRef, ViewContainerRef, ContentChild, EventEmitter, Output, OnDestroy
 } from "@angular/core";
 import { Subscription } from "rxjs";
-import { DropdownService, SuiDropdownMenu } from "../../dropdown/index";
-import { SearchService, LookupFn, FilterFn } from "../../search/index";
-import { Util, ITemplateRefContext, HandledEvent, KeyCode, IFocusEvent } from "../../../misc/util/index";
-import { ISelectLocaleValues, RecursivePartial, SuiLocalizationService } from "../../../behaviors/localization/index";
+import { DropdownService, SuiDropdownMenu } from "../../dropdown/internal";
+import { SearchService, LookupFn, FilterFn } from "../../search/internal";
+import { Util, ITemplateRefContext, HandledEvent, KeyCode, IFocusEvent } from "../../../misc/util/internal";
+import { ISelectLocaleValues, RecursivePartial, SuiLocalizationService } from "../../../behaviors/localization/internal";
 import { SuiSelectOption } from "../components/select-option";
 import { SuiSelectSearch } from "../directives/select-search";
 
@@ -225,9 +225,7 @@ export abstract class SuiSelectBase<T, U> implements AfterContentInit, OnDestroy
     @Output("touched")
     public onTouched:EventEmitter<void>;
 
-    private _documentKeyDownListener:() => void;
-
-    constructor(private _element:ElementRef, renderer:Renderer2, protected _localizationService:SuiLocalizationService) {
+    constructor(private _element:ElementRef, protected _localizationService:SuiLocalizationService) {
         this.dropdownService = new DropdownService();
         // We do want an empty query to return all results.
         this.searchService = new SearchService<T, U>(true);
@@ -243,7 +241,6 @@ export abstract class SuiSelectBase<T, U> implements AfterContentInit, OnDestroy
         this.transitionDuration = 200;
 
         this.onTouched = new EventEmitter<void>();
-        this._documentKeyDownListener = renderer.listen("document", "keydown", (e:KeyboardEvent) => this.onDocumentKeyDown(e));
 
         this.hasClasses = true;
     }
@@ -252,6 +249,7 @@ export abstract class SuiSelectBase<T, U> implements AfterContentInit, OnDestroy
         this._menu.service = this.dropdownService;
         // We manually specify the menu items to the menu because the @ContentChildren doesn't pick up our dynamically rendered items.
         this._menu.items = this._renderedOptions;
+        this._menu.parentElement = this._element;
 
         if (this._manualSearch) {
             this.isSearchable = true;
@@ -386,10 +384,9 @@ export abstract class SuiSelectBase<T, U> implements AfterContentInit, OnDestroy
         }
     }
 
-    public onDocumentKeyDown(e:KeyboardEvent):void {
-        if (this._element.nativeElement.contains(e.target) &&
-            !this.dropdownService.isOpen &&
-            e.keyCode === KeyCode.Down) {
+    @HostListener("keydown", ["$event"])
+    public onKeyDown(e:KeyboardEvent):void {
+        if (!this.dropdownService.isOpen && e.keyCode === KeyCode.Down) {
 
             // Enables support for focussing and opening with the keyboard alone.
             // Using directly because Renderer2 doesn't have invokeElementMethod method anymore.
@@ -423,6 +420,5 @@ export abstract class SuiSelectBase<T, U> implements AfterContentInit, OnDestroy
 
     public ngOnDestroy():void {
         this._renderedSubscriptions.forEach(s => s.unsubscribe());
-        this._documentKeyDownListener();
     }
 }

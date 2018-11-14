@@ -1,5 +1,5 @@
 import { ComponentRef, ElementRef, HostListener, OnDestroy, Renderer2 } from "@angular/core";
-import { SuiComponentFactory } from "../../../misc/util/index";
+import { SuiComponentFactory } from "../../../misc/util/internal";
 import { PopupConfig, PopupTrigger, IPopupConfig } from "./popup-config";
 import { SuiPopup } from "../components/popup";
 import { IPopupLifecycle } from "./popup-lifecycle";
@@ -24,9 +24,9 @@ export abstract class SuiPopupController implements IPopup, OnDestroy {
     private _openingTimeout:number;
 
     // Function to remove the document click handler.
-    private _documentListener:() => void;
+    private _documentListener:(() => void) | undefined;
 
-    constructor(renderer:Renderer2,
+    constructor(protected _renderer:Renderer2,
                 protected _element:ElementRef,
                 protected _componentFactory:SuiComponentFactory,
                 config:PopupConfig) {
@@ -39,8 +39,6 @@ export abstract class SuiPopupController implements IPopup, OnDestroy {
 
         // When the popup is closed (onClose fires on animation complete),
         this.popup.onClose.subscribe(() => this.cleanup());
-
-        this._documentListener = renderer.listen("document", "click", (e:MouseEvent) => this.onDocumentClick(e));
     }
 
     public configure(config?:IPopupConfig):void {
@@ -61,11 +59,20 @@ export abstract class SuiPopupController implements IPopup, OnDestroy {
         // Attach the generated component to the current application.
         this._componentFactory.attachToApplication(this._componentRef);
 
-        // Move the generated element to the body to avoid any positioning issues.
-        this._componentFactory.moveToDocumentBody(this._componentRef);
+        if (this.popup.config.isInline) {
+            this._componentFactory.moveToElement(this._componentRef, this._element.nativeElement.parentElement);
+        } else {
+            // Move the generated element to the body to avoid any positioning issues.
+            this._componentFactory.moveToDocumentBody(this._componentRef);
+        }
 
         // Attach a reference to the anchor element. We do it here because IE11 loves to complain.
         this.popup.anchor = this._element;
+
+        // Add a listener to the document body to handle closing.
+        this._documentListener = this._renderer
+            .listen("document", "click", (e:MouseEvent) =>
+                this.onDocumentClick(e));
 
         // Start popup open transition.
         this.popup.open();
@@ -141,7 +148,7 @@ export abstract class SuiPopupController implements IPopup, OnDestroy {
         }
     }
 
-    public onDocumentClick(e:MouseEvent):void {
+    private onDocumentClick(e:MouseEvent):void {
         // If the popup trigger is outside click,
         if (this._componentRef && this.popup.config.trigger === PopupTrigger.OutsideClick) {
             const target = e.target as Element;
@@ -177,11 +184,13 @@ export abstract class SuiPopupController implements IPopup, OnDestroy {
         }
 
         this._componentFactory.detachFromApplication(this._componentRef);
+
+        if (this._documentListener) {
+            this._documentListener();
+        }
     }
 
     public ngOnDestroy():void {
         this.cleanup();
-
-        this._documentListener();
     }
 }
